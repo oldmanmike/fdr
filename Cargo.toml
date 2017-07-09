@@ -1,0 +1,29 @@
+[package]
+name = "fdr"
+version = "0.1.0"
+authors = ["Michael Carpenter <mcarpenter.dev@gmail.com>"]
+description = """
+Because Selenium isn't cutting it...
+"""
+license = "MPL-2.0"
+documentation = "https://github.com/oldmanmike/fdr"
+homepage = "https://github.com/oldmanmike/fdr"
+repository = "https://github.com/oldmanmike/fdr"
+keywords = ["webdriver"]
+categories = ["Development tools"]
+
+[lib]
+doctest = true
+
+[[bin]]
+name = "fdr"
+path = "src/main.rs"
+
+[dependencies]
+futures = "0.1"
+hyper = "0.11"
+reqwest = "0.6"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
+tokio-core = "0.1"
