@@ -11,6 +11,6 @@
   </a>
   <a href="https://ci.appveyor.com/project/oldmanmike/fdr">
     <img alt="Windows Build"
-      src="https://ci.appveyor.com/api/projects/status/13x7mn3pe5799yqd?svg=true?">
+      src="https://ci.appveyor.com/api/projects/status/13x7mn3pe5799yqd?svg=true">
   </a>
 </p>
