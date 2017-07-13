@@ -21,6 +21,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
+clap = "2"
 futures = "0.1"
 html5ever = "0.18"
 hyper = "0.11"
