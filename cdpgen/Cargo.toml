@@ -1,0 +1,10 @@
+[package]
+name = "cdpgen"
+version = "0.1.0"
+authors = ["Michael Carpenter <mcarpenter.dev@gmail.com>"]
+
+[dependencies]
+reqwest = "0.6"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
