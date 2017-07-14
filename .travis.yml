@@ -1,33 +1,36 @@
 language: rust
-dist: trusty
-rust:
-  - nightly
-  - beta
-  - stable
-os:
-  - linux
-  - osx
 
 matrix:
   include:
     - os: linux
+      language: rust
       dist: trusty
+      rust:
+        - nightly
+        - beta
+        - stable
       addons:
         chrome: stable
       script:
         - google-chrome-stable --headless --disable-gpu --remote-debugging-port=9222 http://localhost &
+        - cargo build -v
+        - cargo test -v
+        - cargo bench -v
+        - cargo doc -v
     - os: osx
-      language: objective-c
+      language: rust
+      rust:
+        - nightly
+        - beta
+        - stable
       addons:
         chrome: stable
       script:
         - /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --headless --disable-gpu --remote-debugging-port=9222 http://localhost &
-
-script:
-  - cargo build -v
-  - cargo test -v
-  - cargo bench -v
-  - cargo doc -v
+        - cargo build -v
+        - cargo test -v
+        - cargo bench -v
+        - cargo doc -v
 
 notifications:
   email:
