@@ -7,11 +7,20 @@ os:
   - linux
   - osx
 
-addons:
-  chrome: stable
-
-before_install:
-  - google-chrome-stable --headless --disable-gpu --remote-debugging-port=9222 http://localhost &
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+      addons:
+        chrome: stable
+      script:
+        - google-chrome-stable --headless --disable-gpu --remote-debugging-port=9222 http://localhost &
+    - os: osx
+      language: objective-c
+      addons:
+        chrome: stable
+      script:
+        - /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --headless --disable-gpu --remote-debugging-port=9222 http://localhost &
 
 script:
   - cargo build -v
