@@ -7,6 +7,12 @@ os:
   - linux
   - osx
 
+addons:
+  chrome: stable
+
+before_install:
+  - google-chrome-stable --headless --disable-gpu --remote-debugging-port=9222 http://localhost &
+
 script:
   - cargo build -v
   - cargo test -v
