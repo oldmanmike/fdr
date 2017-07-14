@@ -25,8 +25,8 @@ struct ExtractedDomain {
     dependencies: Option<Vec<String>>,
     deprecated: Option<bool>,
     #[serde(rename = "types")]
-    extracted_types: Vec<ExtractedType>,
-    commands: Vec<ExtractedCommand>,
+    extracted_types: Option<Vec<ExtractedType>>,
+    commands: Option<Vec<ExtractedCommand>>,
     events: Option<Vec<ExtractedEvent>>,
 }
 
@@ -119,14 +119,26 @@ struct ExtractedEventFieldItem {
 fn main() {
     println!("Generating Chrome Devtools Protocol bindings...");
 
-    let mut resp = reqwest::get("http://raw.githubusercontent.\
+    let mut resp1 = reqwest::get("http://raw.githubusercontent.\
                                  com/ChromeDevTools/devtools-protocol/master/json/js_protocol.\
                                  json")
         .unwrap();
-    assert!(resp.status().is_success());
+    assert!(resp1.status().is_success());
 
-    let mut content = String::new();
-    resp.read_to_string(&mut content);
-    let data: ExtractedCDP = serde_json::from_str(&content).unwrap();
-    println!("Got: {:?}", data);
+    let mut js_content = String::new();
+    resp1.read_to_string(&mut js_content);
+    let js_proto: ExtractedCDP = serde_json::from_str(&js_content).unwrap();
+    println!("Got: {:?}", js_proto);
+
+    let mut resp2 =
+        reqwest::get("http://raw.githubusercontent.\
+                      com/ChromeDevTools/devtools-protocol/master/json/browser_protocol.json")
+            .unwrap();
+    assert!(resp2.status().is_success());
+
+    let mut browser_content = String::new();
+    resp2.read_to_string(&mut browser_content);
+    let browser_proto: ExtractedCDP = serde_json::from_str(&browser_content).unwrap();
+    println!("Got: {:?}", browser_proto);
+
 }
