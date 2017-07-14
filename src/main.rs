@@ -5,14 +5,9 @@ extern crate reqwest;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
-extern crate tokio_core;
 
 use clap::{Arg, App, SubCommand};
-use futures::{Future, Stream};
-use reqwest::Client;
-use serde_json::Value;
-use std::io::{self, Read, Write};
-use tokio_core::reactor::Core;
+use std::io::Read;
 
 #[derive(Debug, Deserialize)]
 struct Something {
@@ -33,6 +28,13 @@ fn main() {
         .author("Michael Carpenter <mcarpenter.dev@gmail.com>")
         .about("A Swiss Army knife for frontend exploratory testing")
         .arg(Arg::with_name("d").short("d").help("Run as a daemon"))
+        .arg(Arg::with_name("verbose").long("--verbose").short("v").help("Log everything"))
+        .arg(Arg::with_name("silent").long("--silent").short("s").help("Log nothing"))
+        .arg(Arg::with_name("browser")
+                 .long("--browser")
+                 .short("b")
+                 .multiple(true)
+                 .help("The address and port of the desired browser"))
         .get_matches();
 
     println!("Welcome to the Flight Data Recorder!");
