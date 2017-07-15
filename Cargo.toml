@@ -12,6 +12,10 @@ repository = "https://github.com/oldmanmike/fdr"
 keywords = ["webdriver"]
 categories = ["Development tools"]
 
+[badges]
+travis-ci = { repository = "oldmanmike/fdr" }
+appveyor = { repository = "oldmanmike/fdr" }
+
 [lib]
 doctest = true
 
