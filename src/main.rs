@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate fdr;
 extern crate futures;
 extern crate hyper;
 extern crate reqwest;
@@ -7,30 +8,17 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate websocket;
 
+use clap::{Arg, App};
+use fdr::CDPTarget;
 use std::net::TcpStream;
 use std::thread;
 use std::sync::mpsc;
 use std::sync::mpsc::channel;
 use std::io::{Read, stdin};
-
-use clap::{Arg, App};
 use websocket::{Message, OwnedMessage};
 use websocket::client::ClientBuilder;
 use websocket::receiver;
 use websocket::sender;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Something {
-    description: String,
-    devtoolsFrontendUrl: Option<String>,
-    faviconUrl: Option<String>,
-    id: String,
-    title: String,
-    #[serde(rename = "type")]
-    some_type: String,
-    url: String,
-    webSocketDebuggerUrl: Option<String>,
-}
 
 fn main() {
     let matches = App::new("Flight Data Recorder")
@@ -53,13 +41,13 @@ fn main() {
 
     let mut content = String::new();
     resp.read_to_string(&mut content);
-    let mut json: Vec<Something> = serde_json::from_str(&content).unwrap();
-    println!("Got: {:?}", json);
+    let mut targets: Vec<CDPTarget> = serde_json::from_str(&content).unwrap();
+    println!("Got: {:?}", targets);
 
-    let tab = json.remove(0);
-    println!("Selecting Tab {:?}", tab);
+    let target = targets.remove(0);
+    println!("Selecting Target {:?}", target);
 
-    let ws = tab.webSocketDebuggerUrl;
+    let ws = target.web_socket_debugger_url;
     println!("Connecting to {:?}", ws);
 
     let client = ClientBuilder::new(ws.unwrap().as_str())
@@ -80,10 +68,12 @@ fn main() {
     let send_loop = thread::spawn(move || run_send_loop(sender, rx));
     let receive_loop = thread::spawn(move || run_receive_loop(receiver, tx_1));
 
-
     tx.send(OwnedMessage::Text("{\"id\": 4, \"method\": \"DOM.enable\"}".to_string()));
+    tx.send(OwnedMessage::Text("{\"id\": 17, \"method\": \"Runtime.enable\"}".to_string()));
+    tx.send(OwnedMessage::Text("{\"id\": 15, \"method\": \"Page.enable\"}".to_string()));
 
-    tx.send(OwnedMessage::Text("{\"id\": 0, \"method\": \"Animation.enable\"}".to_string()));
+    tx.send(OwnedMessage::Text("{\"id\": -2147483647, \"method\": \"Animation.enable\"}"
+                                   .to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 1, \"method\": \"ApplicationCache.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 2, \"method\": \"Console.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 3, \"method\": \"CSS.enable\"}".to_string()));
@@ -96,14 +86,11 @@ fn main() {
     tx.send(OwnedMessage::Text("{\"id\": 11, \"method\": \"LayerTree.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 12, \"method\": \"Log.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 13, \"method\": \"Network.enable\"}".to_string()));
-    tx.send(OwnedMessage::Text("{\"id\": 15, \"method\": \"Page.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 16, \"method\": \"Profiler.enable\"}".to_string()));
-    tx.send(OwnedMessage::Text("{\"id\": 17, \"method\": \"Runtime.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 18, \"method\": \"Security.enable\"}".to_string()));
     tx.send(OwnedMessage::Text("{\"id\": 19, \"method\": \"ServiceWorker.enable\"}".to_string()));
 
-    //tx.send(OwnedMessage::Text("{\"id\": 14, \"method\": \"Overlay.enable\"}".to_string()));
-    let mut counter = 0;
+    let mut counter: i32 = 0;
 
     loop {
         let mut input = String::new();
@@ -114,13 +101,10 @@ fn main() {
 
         let message = match trimmed {
             "/close" => {
-                // Close the connection
                 let _ = tx.send(OwnedMessage::Close(None));
                 break;
             }
-            // Send a ping
             "/ping" => OwnedMessage::Ping(b"PING".to_vec()),
-            // Otherwise, just send text
             _ => OwnedMessage::Text(trimmed.to_string()),
         };
 

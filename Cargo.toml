@@ -21,7 +21,6 @@ doctest = true
 
 [[bin]]
 name = "fdr"
-path = "src/main.rs"
 doc = false
 
 [dependencies]

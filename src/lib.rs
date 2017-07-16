@@ -1,42 +1,45 @@
+extern crate serde;
+extern crate serde_json;
+#[macro_use]
+extern crate serde_derive;
+extern crate websocket;
+
+use serde::{Serialize, Deserialize, Deserializer};
 use std::io;
+use std::sync::mpsc::{Sender, Receiver};
+use websocket::{Message, OwnedMessage};
 
 pub mod remote_debugger;
 
-struct DOMDebugger;
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CDPTarget {
+    pub description: String,
+    pub devtools_frontend_url: Option<String>,
+    pub favicon_url: Option<String>,
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "type")]
+    pub some_type: String,
+    pub url: String,
+    pub web_socket_debugger_url: Option<String>,
+}
 
-impl DOMDebugger {}
+struct ChromeDriver {
+    counter: i32,
+    tx: Sender<OwnedMessage>,
+    rx: Receiver<OwnedMessage>,
+}
 
-struct Debugger;
-
-impl Debugger {}
-
-struct Emulation;
-
-impl Emulation {}
-
-struct Input;
-
-impl Input {}
-
-struct Network;
-
-impl Network {}
-
-struct Page;
-
-impl Page {}
-
-struct Profiler;
-
-impl Profiler {}
-
-struct Runtime;
-
-impl Runtime {}
-
-struct Schema;
-
-impl Schema {}
+impl ChromeDriver {
+    fn packetize<'a, S: Serialize, R: Deserializer<'a>>(self,
+                                                        method: String,
+                                                        params: S)
+                                                        -> io::Result<R> {
+        let payload = serde_json::to_string(&params).unwrap();
+        unimplemented!()
+    }
+}
 
 #[cfg(test)]
 mod tests {

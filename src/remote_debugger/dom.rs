@@ -1,9 +1,11 @@
 use std::io;
+use std::sync::mpsc;
 
 use remote_debugger::overlay::HighlightConfig;
 use remote_debugger::runtime::RemoteObjectId;
 use remote_debugger::runtime::RemoteObject;
 use remote_debugger::page::FrameId;
+use websocket::{Message, OwnedMessage};
 
 pub struct NodeId(i32);
 
@@ -79,7 +81,7 @@ pub struct RGBA {
 
 pub struct Quad(Vec<(f32, f32)>);
 
-struct BoxModel<A> {
+pub struct BoxModel<A> {
     content: Quad,
     padding: Quad,
     border: Quad,
@@ -119,13 +121,15 @@ enum DOMEvent {
     DistributedNodesUpdated(NodeId, Vec<BackendNode>),
 }
 
-struct DOM;
+pub struct DOM {
+    conn: mpsc::Sender<OwnedMessage>,
+}
 
 impl DOM {
-    pub fn enable() {
+    pub fn enable(self) {
         unimplemented!()
     }
-    pub fn disable() {
+    pub fn disable(self) {
         unimplemented!()
     }
     pub fn get_document(depth: Option<i32>, pierce: Option<bool>) -> io::Result<Node> {
