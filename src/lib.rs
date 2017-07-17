@@ -1,7 +1,10 @@
+extern crate futures;
 extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
+extern crate tokio_core;
+extern crate tokio_io;
 extern crate websocket;
 
 use serde::{Serialize, Deserialize, Deserializer};
@@ -10,6 +13,7 @@ use std::sync::mpsc::{Sender, Receiver};
 use websocket::{Message, OwnedMessage};
 
 pub mod remote_debugger;
+pub mod server;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,10 +36,10 @@ struct ChromeDriver {
 }
 
 impl ChromeDriver {
-    fn packetize<'a, S: Serialize, R: Deserializer<'a>>(self,
-                                                        method: String,
-                                                        params: S)
-                                                        -> io::Result<R> {
+    fn packetize<'a, S, D>(self, method: String, params: S) -> io::Result<D>
+        where S: Serialize,
+              D: Deserializer<'a>
+    {
         let payload = serde_json::to_string(&params).unwrap();
         unimplemented!()
     }
