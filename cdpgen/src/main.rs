@@ -128,22 +128,22 @@ fn main() {
     let mut resp1 = reqwest::get("http://raw.githubusercontent.\
                                  com/ChromeDevTools/devtools-protocol/master/json/js_protocol.\
                                  json")
-            .unwrap();
+        .unwrap();
     assert!(resp1.status().is_success());
     println!("js_protocol has arrived!");
     let mut js_content = String::new();
     resp1.read_to_string(&mut js_content);
     let js_proto: ExtractedCDP = serde_json::from_str(&js_content).unwrap();
-    //println!("Got: {:?}", js_proto);
+    // println!("Got: {:?}", js_proto);
 
     let mut resp2 = reqwest::get("http://raw.githubusercontent.\
                       com/ChromeDevTools/devtools-protocol/master/json/browser_protocol.json")
-            .unwrap();
+        .unwrap();
     assert!(resp2.status().is_success());
     println!("browser_protocol has arrived!");
     let mut browser_content = String::new();
     resp2.read_to_string(&mut browser_content);
     let browser_proto: ExtractedCDP = serde_json::from_str(&browser_content).unwrap();
-    //println!("Got: {:?}", browser_proto);
+    // println!("Got: {:?}", browser_proto);
 
 }
