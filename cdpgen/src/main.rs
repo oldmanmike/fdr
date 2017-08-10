@@ -12,6 +12,7 @@ extern crate serde_json;
 
 use inflections::case;
 use std::fs::File;
+use std::io;
 use std::io::{Read, Write, BufWriter};
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +46,8 @@ struct ExtractedType {
     #[serde(rename = "type")]
     extracted_type: String,
     description: Option<String>,
+    #[serde(rename = "enum")]
+    extracted_enum: Option<Vec<String>>,
     properties: Option<Vec<ExtractedStructField>>,
     experimental: Option<bool>,
 }
@@ -216,7 +219,7 @@ fn mk_domain(domain: &ExtractedDomain) {
 }
 
 fn mk_description(buf: &mut BufWriter<File>, desc: &str) {
-    buf.write(format!("/// {}\n", desc).as_bytes()).unwrap();
+    put_description(buf, desc).unwrap();
 }
 
 fn mk_dependencies(buf: &mut BufWriter<File>, deps: &Vec<String>) {
@@ -226,23 +229,90 @@ fn mk_dependencies(buf: &mut BufWriter<File>, deps: &Vec<String>) {
 }
 
 fn mk_deprecated(buf: &mut BufWriter<File>, deprec: bool) {
-    if deprec {
-        buf.write(format!("#[deprecated(note = \"consult the Chrome DevTools Protocol viewer \
-                            for more details.\")]\n")
-                .as_bytes())
-            .unwrap();
-    }
+    put_deprecated(buf, deprec).unwrap();
 }
 
 fn mk_experimental(buf: &mut BufWriter<File>, experimental: bool) {
-    if experimental {
-        buf.write(format!("#![unstable()]\n").as_bytes())
-            .unwrap();
-    }
+    put_experimental(buf, experimental).unwrap();
 }
 
-fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {}
+fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
+    for t in ts {
+        match t.description {
+            None => (),
+            Some(ref body) => put_description(buf, body).unwrap(),
+        }
+        match t.experimental {
+            None => (),
+            Some(experimental) => put_experimental(buf, experimental).unwrap(),
+        }
+        match t.properties {
+            None => {
+                match t.extracted_enum {
+                    None => {
+                        buf.write_all(format!("pub struct {}({});\n", t.id, t.extracted_type)
+                                .as_bytes())
+                            .unwrap()
+                    }
+                    Some(ref enums) => {
+                        buf.write_all(format!("pub enum {} {{\n", t.id).as_bytes()).unwrap();
+                        for e in enums.iter() {
+                            match e.as_ref() {
+                                "-0" => {
+                                    buf.write_all(format!("    {},\n", "NegZero").as_bytes())
+                                        .unwrap()
+                                }
+                                "-infinity" => {
+                                    buf.write_all(format!("    {},\n", "NegInfinity").as_bytes())
+                                        .unwrap()
+                                }
+                                _ => {
+                                    buf.write_all(format!("    {},\n", case::to_pascal_case(e))
+                                            .as_bytes())
+                                        .unwrap()
+                                }
+                            }
+                        }
+                        buf.write_all(format!("}}\n").as_bytes()).unwrap();
+                    }
+                }
+            }
+            Some(ref fields) => (),
+        }
+        buf.write_all(format!("\n").as_bytes()).unwrap();
+    }
+}
 
 fn mk_commands(buf: &mut BufWriter<File>, cmds: &Vec<ExtractedCommand>) {}
 
 fn mk_events(buf: &mut BufWriter<File>, events: &Vec<ExtractedEvent>) {}
+
+fn put_description(buf: &mut BufWriter<File>, desc: &str) -> io::Result<()> {
+    buf.write_all(format!("/// {}\n", desc).as_bytes())
+}
+
+fn put_deprecated(buf: &mut BufWriter<File>, enable: bool) -> io::Result<()> {
+    if enable {
+        buf.write(format!("#[deprecated(note = \"consult the Chrome DevTools Protocol viewer \
+                            for more details.\")]\n")
+            .as_bytes());
+    }
+    Ok(())
+}
+
+fn put_experimental(buf: &mut BufWriter<File>, enable: bool) -> io::Result<()> {
+    if enable {
+        buf.write_all(format!("#![unstable()]\n").as_bytes());
+    }
+    Ok(())
+}
+
+fn convert_type(js_type: &str) -> Option<String> {
+    match js_type {
+        "string" => Some("String".to_string()),
+        "integer" => Some("i32".to_string()),
+        "number" => Some("u32".to_string()),
+
+        _ => None,
+    }
+}
