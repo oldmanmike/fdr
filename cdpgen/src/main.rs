@@ -20,13 +20,13 @@ struct ExtractedCDP {
     domains: Vec<ExtractedDomain>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct ExtractedCDPVersion {
     major: String,
     minor: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedDomain {
     domain: String,
     description: Option<String>,
@@ -39,7 +39,7 @@ struct ExtractedDomain {
     events: Option<Vec<ExtractedEvent>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedType {
     id: String,
     #[serde(rename = "type")]
@@ -49,7 +49,7 @@ struct ExtractedType {
     experimental: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedStructField {
     name: String,
     #[serde(rename = "type")]
@@ -63,7 +63,7 @@ struct ExtractedStructField {
     description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedCommand {
     name: String,
     parameters: Option<Vec<ExtractedCmdField>>,
@@ -72,7 +72,7 @@ struct ExtractedCommand {
     experimental: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedCmdField {
     name: String,
     extracted_type: Option<String>,
@@ -82,7 +82,7 @@ struct ExtractedCmdField {
     description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedReturnType {
     name: String,
     extracted_type: Option<String>,
@@ -91,14 +91,14 @@ struct ExtractedReturnType {
     optional: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedEvent {
     name: String,
     parameters: Option<Vec<ExtractedEventField>>,
     description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 struct ExtractedEventField {
     name: String,
     #[serde(rename = "type")]
@@ -111,13 +111,13 @@ struct ExtractedEventField {
     optional: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum EventItem {
     Singular(ExtractedEventFieldItem),
     Plural(Vec<ExtractedEventFieldItem>),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ExtractedEventFieldItem {
     #[serde(rename = "type")]
     extracted_type: Option<String>,
@@ -128,17 +128,31 @@ struct ExtractedEventFieldItem {
 fn main() {
     println!("Generating Chrome Devtools Protocol bindings...");
 
-    let mut resp = reqwest::get("http://raw.githubusercontent.\
+    let mut resp1 = reqwest::get("http://raw.githubusercontent.\
                       com/ChromeDevTools/devtools-protocol/master/json/browser_protocol.json")
         .unwrap();
-    assert!(resp.status().is_success());
+    assert!(resp1.status().is_success());
     println!("browser_protocol has arrived!");
     let mut browser_content = String::new();
-    resp.read_to_string(&mut browser_content);
+    resp1.read_to_string(&mut browser_content);
     let browser_proto: ExtractedCDP = serde_json::from_str(&browser_content).unwrap();
+
+    let mut resp2 = reqwest::get("http://raw.githubusercontent.\
+                      com/ChromeDevTools/devtools-protocol/master/json/js_protocol.json")
+        .unwrap();
+    assert!(resp2.status().is_success());
+    println!("js_protocol has arrived!");
+    let mut js_content = String::new();
+    resp2.read_to_string(&mut js_content);
+    let js_proto: ExtractedCDP = serde_json::from_str(&js_content).unwrap();
+
     println!("Browser Protocol Version: {:?}", browser_proto.version);
-    mk_lib(&browser_proto.domains);
-    for d in browser_proto.domains.iter() {
+    println!("JS Protocol Version: {:?}", js_proto.version);
+    let mut domains = browser_proto.domains;
+    domains.extend(js_proto.domains.iter().cloned());
+    domains.sort();
+    mk_lib(&domains);
+    for d in domains.iter() {
         mk_domain(&d);
     }
 }
@@ -164,7 +178,7 @@ fn mk_domain(domain: &ExtractedDomain) {
         Some(ref body) => mk_description(&mut buf, body),
     }
     buf.write("\n".as_bytes()).unwrap();
-    buf.write("use std::io;\n".as_bytes()).unwrap();
+    buf.write("use std::str;\n".as_bytes()).unwrap();
     buf.write("\n".as_bytes()).unwrap();
     // println!("Dependencies: {:#?}", domain.dependencies);
     match domain.dependencies {
@@ -172,10 +186,10 @@ fn mk_domain(domain: &ExtractedDomain) {
         Some(ref deps) => mk_dependencies(&mut buf, deps),
     }
     // println!("Deprecated: {:#?}", domain.deprecated);
-    match domain.deprecated {
-        None => (),
-        Some(deprec) => mk_deprecated(&mut buf, deprec),
-    }
+    // match domain.deprecated {
+    // None => (),
+    // Some(deprec) => mk_deprecated(&mut buf, deprec),
+    // }
     println!("Experimental: {:#?}", domain.experimental);
     // match domain.experimental {
     // None => (),
@@ -213,8 +227,8 @@ fn mk_dependencies(buf: &mut BufWriter<File>, deps: &Vec<String>) {
 
 fn mk_deprecated(buf: &mut BufWriter<File>, deprec: bool) {
     if deprec {
-        buf.write(format!("#![deprecated(\"consult the Chrome DevTools Protocol viewer for \
-                            more details.\")]\n")
+        buf.write(format!("#[deprecated(note = \"consult the Chrome DevTools Protocol viewer \
+                            for more details.\")]\n")
                 .as_bytes())
             .unwrap();
     }
