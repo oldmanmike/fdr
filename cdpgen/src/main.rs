@@ -217,12 +217,10 @@ fn mk_domain(domain: &ExtractedDomain) {
         None => (),
         Some(ref extracted_types) => mk_types(&mut buf, extracted_types),
     }
-    // println!("Commands: {:#?}", domain.commands);
     match domain.commands {
         None => (),
         Some(ref commands) => mk_commands(&mut buf, commands),
     }
-    // println!("Events: {:#?}", domain.events);
     match domain.events {
         None => (),
         Some(ref events) => mk_events(&mut buf, events),
@@ -264,28 +262,20 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
             None => {
                 match t.extracted_enum {
                     None => {
-                        buf.write_all(format!("pub struct {}({});\n",
-                                               t.id,
-                                               convert_struct_type(&t.extracted_type).unwrap())
-                                .as_bytes())
-                            .unwrap()
+                        let fmt_struct_name = t.id;
+                        let fmt_struct_type = convert_struct_type(&t.extracted_type).unwrap();
+                        put_ln(buf,
+                               format!("pub struct {}({});\n", fmt_struct_name, fmt_struct_type))
                     }
                     Some(ref enums) => {
                         buf.write_all(format!("pub enum {} {{\n", t.id).as_bytes()).unwrap();
                         for e in enums.iter() {
                             match e.as_ref() {
-                                "-0" => {
-                                    buf.write_all(format!("    {},\n", "NegZero").as_bytes())
-                                        .unwrap()
-                                }
-                                "-infinity" => {
-                                    buf.write_all(format!("    {},\n", "NegInfinity").as_bytes())
-                                        .unwrap()
-                                }
+                                "-0" => put_ln(buf, format!("    {},\n", "NegZero")),
+                                "-infinity" => put_ln(buf, format!("    {},\n", "NegInfinity")),
                                 _ => {
-                                    buf.write_all(format!("    {},\n", case::to_pascal_case(e))
-                                            .as_bytes())
-                                        .unwrap()
+                                    let fmt_name = case::to_pascal_case(e);
+                                    put_ln(buf, format!("    {},\n", fmt_name))
                                 }
                             }
                         }
@@ -295,36 +285,41 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
             }
             Some(ref fields) => {
                 // println!("Printing fields...");
-                buf.write_all(format!("pub struct {} {{\n", t.id).as_bytes()).unwrap();
+                put_ln(buf, format!("pub struct {} {{\n", t.id));
                 for f in fields.iter() {
                     match f.clone().description {
                         None => (),
                         Some(desc) => {
-                            buf.write_all(format!("    /// {}\n", desc).as_bytes()).unwrap()
+                            let comment = sanitize_comment(&desc);
+                            put_ln(buf, format!("    /// {}\n", comment))
                         }
                     }
+                    let field_name = convert_name(&t.id, &f.name);
                     if let Some(ref ft) = f.extracted_type {
                         match convert_field_type(f, ft) {
                             None => println!("Failed to convert: {:#?}", f),
                             Some(converted) => {
-                                buf.write_all(format!("    pub {}: {},\n",
-                                                       case::to_snake_case(&convert_name(&case::to_snake_case(&t.id),
-                                                                    &f.name)),
-                                                       converted)
-                                        .as_bytes())
-                                    .unwrap()
+                                let field_type = converted;
+                                if let Some(true) = f.optional {
+                                    put_ln(buf,
+                                           format!("    pub {}: Option<{}>,\n",
+                                                   field_name,
+                                                   field_type));
+                                } else {
+                                    put_ln(buf,
+                                           format!("    pub {}: {},\n", field_name, field_type));
+                                }
                             }
                         }
                     }
                     if let Some(ref ft) = f.extracted_ref {
-                        buf.write_all(format!("    pub {}: {},\n", case::to_snake_case(&convert_name(&case::to_snake_case(&t.id),
-                                                                    &f.name)), ft).as_bytes()).unwrap();
+                        put_ln(buf, format!("    pub {}: {},\n", field_name, ft));
                     }
                 }
-                buf.write_all(format!("}}\n").as_bytes()).unwrap();
+                put_ln(buf, format!("}}\n"));
             }
         }
-        buf.write_all(format!("\n").as_bytes()).unwrap();
+        put_ln(buf, format!("\n"));
     }
 }
 
@@ -401,20 +396,26 @@ fn convert_field_type(f: &ExtractedStructField, js_type: &str) -> Option<String>
         }
         Some(ref dependency_ref) => {
             // The type is an API type imported from another domain
-            let something: String = dependency_ref.chars()
-                .skip_while(|x| *x != '.')
-                .collect();
-            println!("{:?}", something);
-            Some(dependency_ref.to_string())
+            let chunks: Vec<&str> = dependency_ref.split('.').collect();
+            println!("{:?}", chunks);
+            if chunks.len() == 2 {
+                let dep_str = format!("{}::{}", case::to_snake_case(chunks[0]), chunks[1]);
+                println!("Formatted Dependency: {}", dep_str);
+                Some(dep_str)
+            } else {
+                panic!("Splitting {} a the dot resulted in more than 2 parts!")
+            }
         }
     }
 }
 
 fn convert_name(prefix: &str, type_name: &str) -> String {
-    if type_name == "type" {
-        return format!("{}_{}", prefix, type_name);
+    let sanitized_prefix = case::to_snake_case(prefix);
+    let sanitized_type_name = case::to_snake_case(type_name);
+    if sanitized_type_name == "type" {
+        return format!("{}_{}", sanitized_prefix, sanitized_type_name);
     } else {
-        return type_name.to_string();
+        return sanitized_type_name.to_string();
     }
 }
 
@@ -424,4 +425,8 @@ fn sanitize_comment(comment: &str) -> String {
     let comment3 = comment2.replace("<p>", "\n///\n");
     let comment4 = comment3.replace("</p>", "");
     comment4
+}
+
+fn put_ln(buf: &mut BufWriter<File>, line: String) {
+    buf.write_all(line.as_bytes()).unwrap();
 }
