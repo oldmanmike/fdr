@@ -45,6 +45,11 @@ struct ExtractedType {
     id: String,
     #[serde(rename = "type")]
     extracted_type: String,
+    items: Option<ArrayItemType>,
+    #[serde(rename = "minItems")]
+    min_items: Option<usize>,
+    #[serde(rename = "maxItems")]
+    max_items: Option<usize>,
     description: Option<String>,
     #[serde(rename = "enum")]
     extracted_enum: Option<Vec<String>>,
@@ -59,6 +64,7 @@ struct ExtractedStructField {
     extracted_type: Option<String>,
     #[serde(rename = "$ref")]
     extracted_ref: Option<String>,
+    items: Option<ArrayItemType>,
     optional: Option<bool>,
     experimental: Option<bool>,
     #[serde(rename = "enum")]
@@ -128,6 +134,14 @@ struct ExtractedEventFieldItem {
     extracted_ref: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ArrayItemType {
+    #[serde(rename = "$ref")]
+    extracted_ref: Option<String>,
+    #[serde(rename = "type")]
+    extracted_type: Option<String>,
+}
+
 fn main() {
     println!("Generating Chrome Devtools Protocol bindings...");
 
@@ -193,7 +207,6 @@ fn mk_domain(domain: &ExtractedDomain) {
     // None => (),
     // Some(deprec) => mk_deprecated(&mut buf, deprec),
     // }
-    println!("Experimental: {:#?}", domain.experimental);
     // match domain.experimental {
     // None => (),
     // Some(experimental) => mk_experimental(&mut buf, experimental),
@@ -219,13 +232,14 @@ fn mk_domain(domain: &ExtractedDomain) {
 }
 
 fn mk_description(buf: &mut BufWriter<File>, desc: &str) {
-    put_description(buf, desc).unwrap();
+    put_description(buf, &sanitize_comment(desc)).unwrap();
 }
 
 fn mk_dependencies(buf: &mut BufWriter<File>, deps: &Vec<String>) {
     for dep in deps.iter() {
         buf.write(format!("use {};\n", case::to_snake_case(dep)).as_bytes()).unwrap();
     }
+    buf.write(format!("\n").as_bytes()).unwrap();
 }
 
 fn mk_deprecated(buf: &mut BufWriter<File>, deprec: bool) {
@@ -250,7 +264,9 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
             None => {
                 match t.extracted_enum {
                     None => {
-                        buf.write_all(format!("pub struct {}({});\n", t.id, t.extracted_type)
+                        buf.write_all(format!("pub struct {}({});\n",
+                                               t.id,
+                                               convert_struct_type(&t.extracted_type).unwrap())
                                 .as_bytes())
                             .unwrap()
                     }
@@ -277,7 +293,36 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
                     }
                 }
             }
-            Some(ref fields) => (),
+            Some(ref fields) => {
+                // println!("Printing fields...");
+                buf.write_all(format!("pub struct {} {{\n", t.id).as_bytes()).unwrap();
+                for f in fields.iter() {
+                    match f.clone().description {
+                        None => (),
+                        Some(desc) => {
+                            buf.write_all(format!("    /// {}\n", desc).as_bytes()).unwrap()
+                        }
+                    }
+                    if let Some(ref ft) = f.extracted_type {
+                        match convert_field_type(f, ft) {
+                            None => println!("Failed to convert: {:#?}", f),
+                            Some(converted) => {
+                                buf.write_all(format!("    pub {}: {},\n",
+                                                       case::to_snake_case(&convert_name(&case::to_snake_case(&t.id),
+                                                                    &f.name)),
+                                                       converted)
+                                        .as_bytes())
+                                    .unwrap()
+                            }
+                        }
+                    }
+                    if let Some(ref ft) = f.extracted_ref {
+                        buf.write_all(format!("    pub {}: {},\n", case::to_snake_case(&convert_name(&case::to_snake_case(&t.id),
+                                                                    &f.name)), ft).as_bytes()).unwrap();
+                    }
+                }
+                buf.write_all(format!("}}\n").as_bytes()).unwrap();
+            }
         }
         buf.write_all(format!("\n").as_bytes()).unwrap();
     }
@@ -307,12 +352,76 @@ fn put_experimental(buf: &mut BufWriter<File>, enable: bool) -> io::Result<()> {
     Ok(())
 }
 
-fn convert_type(js_type: &str) -> Option<String> {
+fn convert_struct_type(js_type: &str) -> Option<String> {
+    println!("Got: {:#?}", js_type);
     match js_type {
         "string" => Some("String".to_string()),
         "integer" => Some("i32".to_string()),
         "number" => Some("u32".to_string()),
-
+        "boolean" => Some("bool".to_string()),
         _ => None,
     }
+}
+
+fn convert_field_type(f: &ExtractedStructField, js_type: &str) -> Option<String> {
+    // println!("Converting type {} from {:#?}...", js_type, f);
+    match f.extracted_ref {
+        None => {
+            // Just a JS type, needs to be converted into Rust equivalent
+            match js_type {
+                "string" => Some("String".to_string()),
+                "integer" => Some("i32".to_string()),
+                "number" => Some("u32".to_string()),
+                "boolean" => Some("bool".to_string()),
+                "object" => {
+                    let type_name = case::to_pascal_case(&f.name);
+                    Some(type_name)
+                }
+                "array" => {
+                    match f.clone().items {
+                        None => None,
+                        Some(item_type) => {
+                            if let Some(custom_type) = item_type.extracted_ref {
+                                let item = case::to_pascal_case(&custom_type);
+                                Some(format!("Vec<{}>", item))
+                            } else {
+                                match item_type.extracted_type.unwrap().as_ref() {
+                                    "string" => Some("Vec<String>".to_string()),
+                                    "integer" => Some("Vec<i32>".to_string()),
+                                    "number" => Some("Vec<u32>".to_string()),
+                                    "boolean" => Some("Vec<bool>".to_string()),
+                                    _ => None,
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => None,
+            }
+        }
+        Some(ref dependency_ref) => {
+            // The type is an API type imported from another domain
+            let something: String = dependency_ref.chars()
+                .skip_while(|x| *x != '.')
+                .collect();
+            println!("{:?}", something);
+            Some(dependency_ref.to_string())
+        }
+    }
+}
+
+fn convert_name(prefix: &str, type_name: &str) -> String {
+    if type_name == "type" {
+        return format!("{}_{}", prefix, type_name);
+    } else {
+        return type_name.to_string();
+    }
+}
+
+fn sanitize_comment(comment: &str) -> String {
+    let comment1 = comment.replace("<code>", "`");
+    let comment2 = comment1.replace("</code>", "`");
+    let comment3 = comment2.replace("<p>", "\n///\n");
+    let comment4 = comment3.replace("</p>", "");
+    comment4
 }
