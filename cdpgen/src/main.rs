@@ -193,7 +193,7 @@ fn mk_domain(domain: &ExtractedDomain) {
     // println!("Domain Description: {:#?}", domain.description);
     match domain.description {
         None => (),
-        Some(ref body) => mk_description(&mut buf, body),
+        Some(ref body) => mk_abstract(&mut buf, body),
     }
     buf.write("\n".as_bytes()).unwrap();
     buf.write("use std::str;\n".as_bytes()).unwrap();
@@ -229,6 +229,10 @@ fn mk_domain(domain: &ExtractedDomain) {
 
 fn mk_description(buf: &mut BufWriter<File>, desc: &str) {
     put_description(buf, &sanitize_comment(desc));
+}
+
+fn mk_abstract(buf: &mut BufWriter<File>, desc: &str) {
+    put_abstract(buf, &sanitize_comment(desc));
 }
 
 fn mk_dependencies(buf: &mut BufWriter<File>, domain: &ExtractedDomain) {
@@ -415,6 +419,10 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
 fn mk_commands(buf: &mut BufWriter<File>, cmds: &Vec<ExtractedCommand>) {}
 
 fn mk_events(buf: &mut BufWriter<File>, events: &Vec<ExtractedEvent>) {}
+
+fn put_abstract(buf: &mut BufWriter<File>, desc: &str) {
+    put_ln(buf, format!("//! {}\n", desc))
+}
 
 fn put_description(buf: &mut BufWriter<File>, desc: &str) {
     put_ln(buf, format!("/// {}\n", desc))
