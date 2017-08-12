@@ -199,10 +199,7 @@ fn mk_domain(domain: &ExtractedDomain) {
     buf.write("use std::str;\n".as_bytes()).unwrap();
     buf.write("\n".as_bytes()).unwrap();
     // println!("Dependencies: {:#?}", domain.dependencies);
-    match domain.dependencies {
-        None => (),
-        Some(ref deps) => mk_dependencies(&mut buf, deps),
-    }
+    mk_dependencies(&mut buf, domain);
     // println!("Deprecated: {:#?}", domain.deprecated);
     // match domain.deprecated {
     // None => (),
@@ -234,12 +231,92 @@ fn mk_description(buf: &mut BufWriter<File>, desc: &str) {
     put_description(buf, &sanitize_comment(desc));
 }
 
-fn mk_dependencies(buf: &mut BufWriter<File>, deps: &Vec<String>) {
-    for dep in deps.iter() {
-        let dep_name = case::to_snake_case(dep);
-        put_ln(buf, format!("use {};\n", dep_name));
+fn mk_dependencies(buf: &mut BufWriter<File>, domain: &ExtractedDomain) {
+    println!("Finding dependencies...");
+    let extracted_types = match domain.extracted_types.clone() {
+        None => Vec::new(),
+        Some(types) => types,
+    };
+    let mut et_all: Vec<String> = Vec::new();
+    for et in extracted_types.iter() {
+        et_all.push(et.clone().extracted_type);
+        match et.items {
+            None => (),
+            Some(ref item) => {
+                match item.extracted_ref.clone() {
+                    None => (),
+                    Some(er) => et_all.push(er),
+                }
+                match item.extracted_type.clone() {
+                    None => (),
+                    Some(e) => et_all.push(e),
+                }
+            }
+        };
+        match et.properties {
+            None => (),
+            Some(ref fields) => {
+                for f in fields.iter() {
+                    match f.extracted_type.clone() {
+                        None => (),
+                        Some(ref extracted_type) => et_all.push(extracted_type.to_string()),
+                    }
+                    match f.extracted_ref {
+                        None => (),
+                        Some(ref extracted_ref) => et_all.push(extracted_ref.to_string()),
+                    }
+                    match f.items.clone() {
+                        None => (),
+                        Some(ref item) => {
+                            match item.extracted_ref.clone() {
+                                None => (),
+                                Some(er) => et_all.push(er),
+                            }
+                            match item.extracted_type.clone() {
+                                None => (),
+                                Some(e) => et_all.push(e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
-    put_ln(buf, format!("\n"));
+
+    let mut complete: Vec<_> = et_all.iter()
+        .filter(|x| x.contains('.'))
+        .collect();
+    complete.sort();
+    complete.dedup();
+    for dep_str in complete.iter() {
+        let chunks: Vec<&str> = dep_str.split('.').collect();
+        if chunks.len() == 2 {
+            let fmt_dep_str = format!("use {}::{};\n", case::to_snake_case(chunks[0]), chunks[1]);
+            put_ln(buf, fmt_dep_str);
+        } else {
+            panic!("Splitting {} a the dot resulted in more than 2 parts!")
+        }
+
+    }
+    put_ln(buf, "\n".to_string());
+    println!("{:#?}", complete);
+
+    // let extracted_commands = match domain.commands.clone() {
+    // None => Vec::new(),
+    // Some(cmds) => cmds,
+    // };
+    // let extracted_events = match domain.events.clone() {
+    // None => Vec::new(),
+    // Some(evs) => evs,
+    // };
+    //
+    ()
+    // for dep in deps.iter() {
+    // let dep_name = case::to_snake_case(dep);
+    // put_ln(buf, format!("use {};\n", dep_name));
+    // }
+    // put_ln(buf, format!("\n"));
+    //
 }
 
 fn mk_deprecated(buf: &mut BufWriter<File>, deprec: bool) {
@@ -256,16 +333,12 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
             None => (),
             Some(ref body) => put_description(buf, body),
         }
-        match t.experimental {
-            None => (),
-            Some(experimental) => put_experimental(buf, experimental),
-        }
         match t.properties {
             None => {
                 match t.extracted_enum {
                     None => {
                         let fmt_struct_name = t.id.clone();
-                        let fmt_struct_type = convert_struct_type(&t.extracted_type).unwrap();
+                        let fmt_struct_type = convert_struct_type(&t).unwrap();
                         put_ln(buf,
                                format!("pub struct {}({});\n", fmt_struct_name, fmt_struct_type))
                     }
@@ -274,7 +347,8 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
                         for e in enums.iter() {
                             match e.as_ref() {
                                 "-0" => put_ln(buf, format!("    {},\n", "NegZero")),
-                                "-infinity" => put_ln(buf, format!("    {},\n", "NegInfinity")),
+                                "infinity" => put_ln(buf, format!("    {},\n", "Infinity")),
+                                "-Infinity" => put_ln(buf, format!("    {},\n", "NegInfinity")),
                                 _ => {
                                     let fmt_name = case::to_pascal_case(e);
                                     put_ln(buf, format!("    {},\n", fmt_name))
@@ -286,7 +360,6 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
                 }
             }
             Some(ref fields) => {
-                // println!("Printing fields...");
                 put_ln(buf, format!("pub struct {} {{\n", t.id));
                 for f in fields.iter() {
                     match f.clone().description {
@@ -298,7 +371,7 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
                     }
                     let field_name = convert_name(&t.id, &f.name);
                     if let Some(ref ft) = f.extracted_type {
-                        match convert_field_type(f, ft) {
+                        match convert_field_type(f, ft, &t.id) {
                             None => println!("Failed to convert: {:#?}", f),
                             Some(converted) => {
                                 let field_type = converted;
@@ -315,7 +388,21 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
                         }
                     }
                     if let Some(ref ft) = f.extracted_ref {
-                        put_ln(buf, format!("    pub {}: {},\n", field_name, ft));
+                        match convert_field_type(f, ft, &t.id) {
+                            None => println!("Failed to convert: {:#?}", f),
+                            Some(converted) => {
+                                let field_type = converted;
+                                if let Some(true) = f.optional {
+                                    put_ln(buf,
+                                           format!("    pub {}: Option<{}>,\n",
+                                                   field_name,
+                                                   field_type));
+                                } else {
+                                    put_ln(buf,
+                                           format!("    pub {}: {},\n", field_name, field_type));
+                                }
+                            }
+                        }
                     }
                 }
                 put_ln(buf, format!("}}\n"));
@@ -347,44 +434,75 @@ fn put_experimental(buf: &mut BufWriter<File>, enable: bool) {
     }
 }
 
-fn convert_struct_type(js_type: &str) -> Option<String> {
-    println!("Got: {:#?}", js_type);
-    match js_type {
+fn convert_struct_type(et: &ExtractedType) -> Option<String> {
+    match et.extracted_type.as_ref() {
         "string" => Some("String".to_string()),
         "integer" => Some("i32".to_string()),
         "number" => Some("u32".to_string()),
         "boolean" => Some("bool".to_string()),
+        "object" => Some("String".to_string()),// FIXME
+        "array" => {
+            match et.items.clone() {
+                None => panic!("WAT!"),
+                Some(ait) => {
+                    if let Some(custom_type) = ait.extracted_ref {
+                        let item = case::to_pascal_case(&custom_type);
+                        Some(format!("Vec<{}>", item))
+                    } else {
+                        match ait.extracted_type.unwrap().as_ref() {
+                            "string" => Some("Vec<String>".to_string()),
+                            "integer" => Some("Vec<i32>".to_string()),
+                            "number" => Some("Vec<u32>".to_string()),
+                            "boolean" => Some("Vec<bool>".to_string()),
+                            "any" => Some("Vec<String>".to_string()), // FIXME
+                            _ => None,
+                        }
+                    }
+                }
+            }
+        }
         _ => None,
     }
 }
 
-fn convert_field_type(f: &ExtractedStructField, js_type: &str) -> Option<String> {
-    // println!("Converting type {} from {:#?}...", js_type, f);
+fn convert_field_type(f: &ExtractedStructField, js_type: &str, struct_id: &str) -> Option<String> {
     match f.extracted_ref {
         None => {
-            // Just a JS type, needs to be converted into Rust equivalent
             match js_type {
                 "string" => Some("String".to_string()),
                 "integer" => Some("i32".to_string()),
                 "number" => Some("u32".to_string()),
                 "boolean" => Some("bool".to_string()),
-                "object" => {
-                    let type_name = case::to_pascal_case(&f.name);
-                    Some(type_name)
-                }
+                "any" => Some("String".to_string()), // FIXME
+                "object" => Some("String".to_string()), // FIXME
                 "array" => {
                     match f.clone().items {
                         None => None,
                         Some(item_type) => {
                             if let Some(custom_type) = item_type.extracted_ref {
-                                let item = case::to_pascal_case(&custom_type);
-                                Some(format!("Vec<{}>", item))
+                                if custom_type.contains('.') {
+                                    let chunks: Vec<&str> = custom_type.split('.').collect();
+                                    if chunks.len() == 2 {
+                                        // let dep_str = format!("{}::{}",
+                                        // case::to_snake_case(chunks[0]),
+                                        // chunks[1]);
+                                        let dep_str = format!("{}", chunks[1]);
+                                        Some(dep_str)
+                                    } else {
+                                        panic!("Splitting {} a the dot resulted in more than 2 \
+                                                parts!")
+                                    }
+                                } else {
+                                    Some(format!("Vec<{}>", custom_type))
+                                }
                             } else {
                                 match item_type.extracted_type.unwrap().as_ref() {
                                     "string" => Some("Vec<String>".to_string()),
                                     "integer" => Some("Vec<i32>".to_string()),
                                     "number" => Some("Vec<u32>".to_string()),
                                     "boolean" => Some("Vec<bool>".to_string()),
+                                    "object" => Some("Vec<String>".to_string()), // FIXME
+                                    "any" => Some("Vec<String>".to_string()), // FIXME
                                     _ => None,
                                 }
                             }
@@ -395,15 +513,21 @@ fn convert_field_type(f: &ExtractedStructField, js_type: &str) -> Option<String>
             }
         }
         Some(ref dependency_ref) => {
-            // The type is an API type imported from another domain
-            let chunks: Vec<&str> = dependency_ref.split('.').collect();
-            println!("{:?}", chunks);
-            if chunks.len() == 2 {
-                let dep_str = format!("{}::{}", case::to_snake_case(chunks[0]), chunks[1]);
-                println!("Formatted Dependency: {}", dep_str);
-                Some(dep_str)
+            if dependency_ref.contains('.') {
+                let chunks: Vec<&str> = dependency_ref.split('.').collect();
+                if chunks.len() == 2 {
+                    // let dep_str = format!("{}::{}", case::to_snake_case(chunks[0]), chunks[1]);
+                    let dep_str = format!("{}", chunks[1]);
+                    Some(dep_str)
+                } else {
+                    panic!("Splitting {} a the dot resulted in more than 2 parts!")
+                }
             } else {
-                panic!("Splitting {} a the dot resulted in more than 2 parts!")
+                if dependency_ref == struct_id {
+                    Some(format!("Box<{}>", dependency_ref))
+                } else {
+                    Some(dependency_ref.to_string())
+                }
             }
         }
     }
@@ -420,11 +544,10 @@ fn convert_name(prefix: &str, type_name: &str) -> String {
 }
 
 fn sanitize_comment(comment: &str) -> String {
-    let comment1 = comment.replace("<code>", "`");
-    let comment2 = comment1.replace("</code>", "`");
-    let comment3 = comment2.replace("<p>", "\n///\n");
-    let comment4 = comment3.replace("</p>", "");
-    comment4
+    comment.replace("<code>", "`")
+        .replace("</code>", "`")
+        .replace("<p>", "\n///\n/// ")
+        .replace("</p>", "")
 }
 
 fn put_ln(buf: &mut BufWriter<File>, line: String) {
