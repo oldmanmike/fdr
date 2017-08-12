@@ -177,6 +177,9 @@ fn main() {
 fn mk_lib(domains: &Vec<ExtractedDomain>) {
     let f = File::create("cdp/src/lib.rs").unwrap();
     let mut buf = BufWriter::new(f);
+    put_ln(&mut buf, format!("#[macro_use]\n"));
+    put_ln(&mut buf, format!("extern crate serde_derive;\n"));
+    put_ln(&mut buf, format!("\n"));
     for d in domains.iter() {
         let fmt_mod_name = case::to_snake_case(&d.domain);
         put_ln(&mut buf, format!("pub mod {};\n", fmt_mod_name));
@@ -193,7 +196,7 @@ fn mk_domain(domain: &ExtractedDomain) {
     // println!("Domain Description: {:#?}", domain.description);
     match domain.description {
         None => (),
-        Some(ref body) => mk_abstract(&mut buf, body),
+        Some(ref body) => mk_module_doc(&mut buf, body),
     }
     buf.write("\n".as_bytes()).unwrap();
     buf.write("use std::str;\n".as_bytes()).unwrap();
@@ -231,8 +234,8 @@ fn mk_description(buf: &mut BufWriter<File>, desc: &str) {
     put_description(buf, &sanitize_comment(desc));
 }
 
-fn mk_abstract(buf: &mut BufWriter<File>, desc: &str) {
-    put_abstract(buf, &sanitize_comment(desc));
+fn mk_module_doc(buf: &mut BufWriter<File>, desc: &str) {
+    put_module_doc(buf, &sanitize_module_doc(desc));
 }
 
 fn mk_dependencies(buf: &mut BufWriter<File>, domain: &ExtractedDomain) {
@@ -337,6 +340,7 @@ fn mk_types(buf: &mut BufWriter<File>, ts: &Vec<ExtractedType>) {
             None => (),
             Some(ref body) => put_description(buf, body),
         }
+        put_derive(buf);
         match t.properties {
             None => {
                 match t.extracted_enum {
@@ -420,7 +424,7 @@ fn mk_commands(buf: &mut BufWriter<File>, cmds: &Vec<ExtractedCommand>) {}
 
 fn mk_events(buf: &mut BufWriter<File>, events: &Vec<ExtractedEvent>) {}
 
-fn put_abstract(buf: &mut BufWriter<File>, desc: &str) {
+fn put_module_doc(buf: &mut BufWriter<File>, desc: &str) {
     put_ln(buf, format!("//! {}\n", desc))
 }
 
@@ -440,6 +444,11 @@ fn put_experimental(buf: &mut BufWriter<File>, enable: bool) {
     if enable {
         put_ln(buf, format!("#![unstable()]\n"));
     }
+}
+
+fn put_derive(buf: &mut BufWriter<File>) {
+    put_ln(buf,
+           format!("#[derive(Debug, Clone, Serialize, Deserialize)]\n"));
 }
 
 fn convert_struct_type(et: &ExtractedType) -> Option<String> {
@@ -549,6 +558,13 @@ fn convert_name(prefix: &str, type_name: &str) -> String {
     } else {
         return sanitized_type_name.to_string();
     }
+}
+
+fn sanitize_module_doc(comment: &str) -> String {
+    comment.replace("<code>", "`")
+        .replace("</code>", "`")
+        .replace("<p>", "\n//!\n//! ")
+        .replace("</p>", "")
 }
 
 fn sanitize_comment(comment: &str) -> String {
